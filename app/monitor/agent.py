@@ -31,6 +31,9 @@ try:
 except ImportError:
     OTEL_AVAILABLE = False
     metrics = None
+    MeterProvider = None  # type: ignore
+    PeriodicExportingMetricReader = None  # type: ignore
+    OTLPMetricExporter = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
