@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.ingestion import router as review_router
 from app.incident_commander.router import router as incident_router
+from app.monitor.router import router as monitor_router
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     # Include routers with API v1 prefix
     app.include_router(review_router, prefix=API_V1_PREFIX)
     app.include_router(incident_router, prefix=API_V1_PREFIX)
+    app.include_router(monitor_router, prefix=API_V1_PREFIX)
 
     @app.get("/", tags=["root"])
     async def root() -> dict[str, str]:
