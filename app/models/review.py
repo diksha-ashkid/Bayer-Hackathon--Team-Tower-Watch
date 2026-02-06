@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
-from app.deployment.models.common import Severity, ReviewType
+from app.models.common import Severity, ReviewType
 
 
 @dataclass(frozen=True)

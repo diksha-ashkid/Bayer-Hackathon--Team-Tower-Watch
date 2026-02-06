@@ -5,9 +5,9 @@ import re
 from typing import Optional
 import httpx
 
-from app.deployment.config import GitHubConfig
-from app.deployment.models.common import FileChangeType
-from app.deployment.models.github import (
+from app.config import GitHubConfig
+from app.models.common import FileChangeType
+from app.models.github import (
     GitHubCommit,
     GitHubDiffHunk,
     GitHubFile,

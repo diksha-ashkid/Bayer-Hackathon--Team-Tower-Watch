@@ -3,10 +3,10 @@
 from functools import lru_cache
 from typing import Generator
 
-from app.deployment.agents import ReviewAgent, MockReviewAgent
-from app.deployment.clients import GitHubClient
-from app.deployment.config import AppConfig, load_config
-from app.deployment.workflow import ReviewWorkflowEngine
+from app.agents import ReviewAgent, MockReviewAgent
+from app.clients import GitHubClient
+from app.config import AppConfig, load_config
+from app.workflow import ReviewWorkflowEngine
 
 
 @lru_cache()
@@ -34,7 +34,7 @@ def get_review_agent() -> ReviewAgent:
 
     Override this dependency to use a custom agent:
 
-        from app.deployment.ingestion.dependencies import get_review_agent
+        from app.ingestion.dependencies import get_review_agent
         from myapp.agents import MyLLMAgent
 
         app.dependency_overrides[get_review_agent] = lambda: MyLLMAgent()

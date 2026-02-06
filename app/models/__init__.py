@@ -1,7 +1,7 @@
 """Data models for the code review automation service."""
 
-from app.deployment.models.common import Severity, ReviewType, FileChangeType
-from app.deployment.models.github import (
+from app.models.common import Severity, ReviewType, FileChangeType
+from app.models.github import (
     GitHubCommit,
     GitHubFile,
     GitHubDiffHunk,
@@ -10,7 +10,7 @@ from app.deployment.models.github import (
     GitHubRepository,
     GitHubTreeEntry,
 )
-from app.deployment.models.review import (
+from app.models.review import (
     ReviewFinding,
     ReviewResult,
     ReviewContext,

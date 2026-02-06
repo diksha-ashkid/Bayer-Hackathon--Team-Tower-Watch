@@ -1,6 +1,6 @@
 """Normalization layer for repository trees and diffs."""
 
-from app.deployment.normalization.normalizer import (
+from app.normalization.normalizer import (
     CodeNormalizer,
     NormalizedFile,
     NormalizedDiff,

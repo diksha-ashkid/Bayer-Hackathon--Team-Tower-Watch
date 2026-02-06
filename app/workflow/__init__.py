@@ -1,7 +1,7 @@
 """Review workflow engine."""
 
-from app.deployment.workflow.engine import ReviewWorkflowEngine
-from app.deployment.workflow.exceptions import (
+from app.workflow.engine import ReviewWorkflowEngine
+from app.workflow.exceptions import (
     WorkflowError,
     ReviewerNotAssignedError,
     RepositoryAccessError,

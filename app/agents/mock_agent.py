@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from app.deployment.agents.base import ReviewAgent, ReviewAgentError
+from app.agents.base import ReviewAgent, ReviewAgentError
 
 
 class MockReviewAgent(ReviewAgent):

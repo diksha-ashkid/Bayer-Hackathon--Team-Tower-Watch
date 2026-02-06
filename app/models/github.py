@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from app.deployment.models.common import FileChangeType
+from app.models.common import FileChangeType
 
 
 @dataclass(frozen=True)

@@ -2,10 +2,10 @@
 
 import pytest
 
-from app.deployment.config import ReviewConfig
-from app.deployment.models.common import FileChangeType
-from app.deployment.models.github import GitHubDiffHunk, GitHubFile, GitHubFileDiff, GitHubTreeEntry
-from app.deployment.normalization import CodeNormalizer
+from app.config import ReviewConfig
+from app.models.common import FileChangeType
+from app.models.github import GitHubDiffHunk, GitHubFile, GitHubFileDiff, GitHubTreeEntry
+from app.normalization import CodeNormalizer
 
 
 @pytest.fixture
@@ -119,7 +119,7 @@ class TestCodeNormalizer:
 
     def test_build_repository_context(self, normalizer: CodeNormalizer):
         """Test repository context building."""
-        from app.deployment.normalization.normalizer import NormalizedFile
+        from app.normalization.normalizer import NormalizedFile
 
         files = [
             NormalizedFile(path="main.py", content="print(1)", language="python", size=10),

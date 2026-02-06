@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.deployment.agents import MockReviewAgent
-from app.deployment.agents.base import ReviewAgentError
+from app.agents import MockReviewAgent
+from app.agents.base import ReviewAgentError
 
 
 class TestMockReviewAgent:

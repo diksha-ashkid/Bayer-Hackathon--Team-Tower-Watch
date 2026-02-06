@@ -4,11 +4,11 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 
-from app.deployment.main import app
-from app.deployment.ingestion.dependencies import get_workflow_engine
-from app.deployment.models.common import ReviewType, Severity
-from app.deployment.models.review import CodeLocation, ReviewFinding, ReviewResult
-from app.deployment.workflow import ReviewerNotAssignedError, RepositoryAccessError
+from app.main import app
+from app.ingestion.dependencies import get_workflow_engine
+from app.models.common import ReviewType, Severity
+from app.models.review import CodeLocation, ReviewFinding, ReviewResult
+from app.workflow import ReviewerNotAssignedError, RepositoryAccessError
 
 
 @pytest.fixture

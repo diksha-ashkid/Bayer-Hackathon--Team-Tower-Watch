@@ -1,7 +1,7 @@
 """Ingestion API endpoints for code review service."""
 
-from app.deployment.ingestion.router import router
-from app.deployment.ingestion.schemas import (
+from app.ingestion.router import router
+from app.ingestion.schemas import (
     CommitReviewRequest,
     PullRequestReviewRequest,
     ReviewResponse,

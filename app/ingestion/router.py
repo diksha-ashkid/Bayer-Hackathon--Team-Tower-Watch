@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.deployment.ingestion.schemas import (
+from app.ingestion.schemas import (
     CommitReviewRequest,
     ErrorResponse,
     FindingResponse,
@@ -14,9 +14,9 @@ from app.deployment.ingestion.schemas import (
     ReviewResponse,
     StatisticsResponse,
 )
-from app.deployment.ingestion.dependencies import get_workflow_engine
-from app.deployment.models.review import ReviewResult
-from app.deployment.workflow import (
+from app.ingestion.dependencies import get_workflow_engine
+from app.models.review import ReviewResult
+from app.workflow import (
     ReviewWorkflowEngine,
     ReviewerNotAssignedError,
     RepositoryAccessError,
@@ -25,7 +25,7 @@ from app.deployment.workflow import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/review", tags=["review"])
+router = APIRouter(prefix="/review", tags=["review"])
 
 
 def _convert_result_to_response(result: ReviewResult) -> ReviewResponse:

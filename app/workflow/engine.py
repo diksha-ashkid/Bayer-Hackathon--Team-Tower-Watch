@@ -3,23 +3,23 @@
 import logging
 from typing import Any, Optional
 
-from app.deployment.agents.base import ReviewAgent, ReviewAgentError
-from app.deployment.clients.github_client import (
+from app.agents.base import ReviewAgent, ReviewAgentError
+from app.clients.github_client import (
     GitHubClient,
     GitHubClientError,
     GitHubNotFoundError,
 )
-from app.deployment.config import AppConfig
-from app.deployment.models.common import ReviewType, Severity
-from app.deployment.models.github import GitHubFile
-from app.deployment.models.review import (
+from app.config import AppConfig
+from app.models.common import ReviewType, Severity
+from app.models.github import GitHubFile
+from app.models.review import (
     CodeLocation,
     ReviewContext,
     ReviewFinding,
     ReviewResult,
 )
-from app.deployment.normalization import CodeNormalizer
-from app.deployment.workflow.exceptions import (
+from app.normalization import CodeNormalizer
+from app.workflow.exceptions import (
     RepositoryAccessError,
     ReviewerNotAssignedError,
     WorkflowError,

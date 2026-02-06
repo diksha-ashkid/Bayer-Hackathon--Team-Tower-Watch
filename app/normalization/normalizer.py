@@ -3,13 +3,13 @@
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
-from app.deployment.config import ReviewConfig
-from app.deployment.models.github import (
+from app.config import ReviewConfig
+from app.models.github import (
     GitHubFile,
     GitHubFileDiff,
     GitHubTreeEntry,
 )
-from app.deployment.models.common import FileChangeType
+from app.models.common import FileChangeType
 
 
 @dataclass

@@ -1,5 +1,3 @@
-# autonomous_incident_commander.py
-
 """
 Multi-Agent Autonomous Incident Commander
 ==========================================
@@ -17,7 +15,8 @@ Flow: DETECT → PLAN → INVESTIGATE → DECIDE → ACT → REPORT
 import json
 import re
 import os
-from typing import TypedDict, Annotated, Sequence, Literal
+import logging
+from typing import TypedDict, Annotated, Sequence, Literal, Optional, Any
 from datetime import datetime
 import operator
 
@@ -30,36 +29,101 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langchain_core.tools import tool
 from langchain_aws import ChatBedrock
 
-# OpenTelemetry imports
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+# OpenTelemetry imports (optional)
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    trace = None
 
-# Redis for shared memory
-import redis
+# Redis for shared memory (optional)
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    redis = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-AWS_REGION = ""
-ACCESS_KEY = ""
-SECRET_KEY = ""
-MODEL_ID = "amazon.nova-pro-v1:0"
+# Model configuration
+MODEL_ID = os.environ.get('BEDROCK_MODEL_ID', "amazon.nova-pro-v1:0")
+AWS_REGION = os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+ACCESS_KEY = os.environ.get('AWS_ACCESS_KEY_ID', '')
+SECRET_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 
 # Redis configuration for shared memory
-REDIS_HOST = "localhost"
-REDIS_PORT = 6379
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
 
-# Initialize Redis client
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+# Initialize Redis client (if available)
+redis_client: Optional[Any] = None
+if REDIS_AVAILABLE:
+    try:
+        redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        redis_client.ping()
+        logger.info("Redis connection established")
+    except Exception as e:
+        logger.warning(f"Redis connection failed, using in-memory storage: {e}")
+        redis_client = None
 
-# OpenTelemetry setup
-trace.set_tracer_provider(TracerProvider())
-tracer = trace.get_tracer(__name__)
-trace.get_tracer_provider().add_span_processor(
-    SimpleSpanProcessor(ConsoleSpanExporter())
-)
+# In-memory fallback storage
+_memory_storage: dict[str, str] = {}
+
+
+def memory_set(key: str, value: str) -> None:
+    """Store value in Redis or fallback to in-memory."""
+    if redis_client:
+        redis_client.set(key, value)
+    else:
+        _memory_storage[key] = value
+
+
+def memory_get(key: str) -> Optional[str]:
+    """Get value from Redis or fallback to in-memory."""
+    if redis_client:
+        return redis_client.get(key)
+    return _memory_storage.get(key)
+
+
+# OpenTelemetry setup (if available)
+tracer = None
+if OTEL_AVAILABLE:
+    try:
+        trace.set_tracer_provider(TracerProvider())
+        tracer = trace.get_tracer(__name__)
+        trace.get_tracer_provider().add_span_processor(
+            SimpleSpanProcessor(ConsoleSpanExporter())
+        )
+        logger.info("OpenTelemetry tracing enabled")
+    except Exception as e:
+        logger.warning(f"OpenTelemetry setup failed: {e}")
+
+
+class TracerContextManager:
+    """Context manager for optional tracing."""
+    
+    def __init__(self, span_name: str):
+        self.span_name = span_name
+        self.span = None
+    
+    def __enter__(self):
+        if tracer:
+            self.span = tracer.start_span(self.span_name)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.span:
+            self.span.end()
+        return False
+
 
 # =============================================================================
 # STATE DEFINITION
@@ -94,6 +158,7 @@ class AgentState(TypedDict):
     next_agent: str
     iteration_count: int
 
+
 # =============================================================================
 # AGENT TOOLS
 # =============================================================================
@@ -109,7 +174,7 @@ def analyze_logs_for_errors(logs_json: str) -> dict:
     Returns:
         Dictionary with error analysis including tracebacks, error types, and frequencies
     """
-    with tracer.start_as_current_span("analyze_logs_for_errors"):
+    with TracerContextManager("analyze_logs_for_errors"):
         try:
             data = json.loads(logs_json) if isinstance(logs_json, str) else logs_json
             log_events = data.get("logEvents", [])
@@ -163,7 +228,7 @@ def analyze_logs_for_errors(logs_json: str) -> dict:
                 "analysis_timestamp": datetime.now().isoformat()
             }
             
-            redis_client.set("sent_log_memory", json.dumps(analysis_result))
+            memory_set("sent_log_memory", json.dumps(analysis_result))
             
             return analysis_result
             
@@ -182,7 +247,7 @@ def analyze_metrics_for_anomalies(logs_json: str) -> dict:
     Returns:
         Dictionary with metric analysis including anomalies and trends
     """
-    with tracer.start_as_current_span("analyze_metrics_for_anomalies"):
+    with TracerContextManager("analyze_metrics_for_anomalies"):
         try:
             data = json.loads(logs_json) if isinstance(logs_json, str) else logs_json
             log_events = data.get("logEvents", [])
@@ -190,7 +255,7 @@ def analyze_metrics_for_anomalies(logs_json: str) -> dict:
             # Metric patterns
             patterns = {
                 "request_size": re.compile(r"bytes=(\d+)"),
-                "latency": re.compile(r"latency_ms=(\d+)"),
+                "latency": re.compile(r"latency_ms=(\d+)|latency=(\d+)ms"),
                 "confidence": re.compile(r"confidence=(\d+\.\d+)"),
                 "gpu_queue": re.compile(r"gpu_queue_depth=(\d+)"),
                 "network_latency": re.compile(r"slow_network_ms=(\d+)"),
@@ -208,7 +273,7 @@ def analyze_metrics_for_anomalies(logs_json: str) -> dict:
             }
             
             for event in log_events:
-                msg = event["message"]
+                msg = event.get("message", "")
                 timestamp = event.get("timestamp")
                 
                 # Count requests
@@ -233,7 +298,7 @@ def analyze_metrics_for_anomalies(logs_json: str) -> dict:
                 # Extract latency
                 latency_match = patterns["latency"].search(msg)
                 if latency_match:
-                    latency = int(latency_match.group(1))
+                    latency = int(latency_match.group(1) or latency_match.group(2))
                     metrics["latencies"].append({
                         "timestamp": timestamp,
                         "value": latency
@@ -282,7 +347,7 @@ def check_deployment_timeline(time_window_minutes: int = 30) -> dict:
     Returns:
         Dictionary with deployment timeline and correlations
     """
-    with tracer.start_as_current_span("check_deployment_timeline"):
+    with TracerContextManager("check_deployment_timeline"):
         # Simulated deployment timeline
         # In production, this would query CI/CD systems, AWS CloudFormation, etc.
         
@@ -367,28 +432,48 @@ Root Cause: {root_cause}
 
 def create_bedrock_llm():
     """Initialize AWS Bedrock LLM with Nova Pro model."""
-    return ChatBedrock(
-        model=MODEL_ID,
-        region=AWS_REGION,
-        aws_access_key_id=ACCESS_KEY,
-        aws_secret_access_key=SECRET_KEY,
-        model_kwargs={
+    kwargs = {
+        "model": MODEL_ID,
+        "region": AWS_REGION,
+        "model_kwargs": {
             "temperature": 0.1,  # Low temperature for consistent reasoning
             "max_tokens": 2000
         }
-    )
+    }
+    
+    # Only add credentials if explicitly provided
+    if ACCESS_KEY and SECRET_KEY:
+        kwargs["aws_access_key_id"] = ACCESS_KEY
+        kwargs["aws_secret_access_key"] = SECRET_KEY
+    
+    return ChatBedrock(**kwargs)
 
-llm = create_bedrock_llm()
 
-# Bind tools to LLM
-tools = [
-    analyze_logs_for_errors,
-    analyze_metrics_for_anomalies,
-    check_deployment_timeline,
-    generate_incident_report
-]
+# Lazy initialization of LLM
+_llm = None
+_llm_with_tools = None
 
-llm_with_tools = llm.bind_tools(tools)
+def get_llm():
+    """Get or create the LLM instance."""
+    global _llm
+    if _llm is None:
+        _llm = create_bedrock_llm()
+    return _llm
+
+
+def get_llm_with_tools():
+    """Get or create the LLM instance with tools bound."""
+    global _llm_with_tools
+    if _llm_with_tools is None:
+        tools = [
+            analyze_logs_for_errors,
+            analyze_metrics_for_anomalies,
+            check_deployment_timeline,
+            generate_incident_report
+        ]
+        _llm_with_tools = get_llm().bind_tools(tools)
+    return _llm_with_tools
+
 
 # =============================================================================
 # AGENT NODES
@@ -411,9 +496,11 @@ def orchestrator_agent(state: AgentState) -> AgentState:
     - Observe: Review results and update understanding
     """
     
-    with tracer.start_as_current_span("orchestrator_agent"):
+    with TracerContextManager("orchestrator_agent"):
         messages = list(state["messages"])
         iteration = state.get("iteration_count", 0)
+        llm_with_tools = get_llm_with_tools()
+        llm = get_llm()
         
         # First iteration: Create investigation plan
         if iteration == 0:
@@ -544,7 +631,7 @@ def logs_agent_node(state: AgentState) -> AgentState:
     Stores findings in Redis (sent_log_memory) for other agents to access.
     """
     
-    with tracer.start_as_current_span("logs_agent"):
+    with TracerContextManager("logs_agent"):
         messages = list(state["messages"])
         
         # Call the log analysis tool
@@ -583,7 +670,7 @@ def metrics_agent_node(state: AgentState) -> AgentState:
     Uses OpenTelemetry patterns for structured metric extraction.
     """
     
-    with tracer.start_as_current_span("metrics_agent"):
+    with TracerContextManager("metrics_agent"):
         messages = list(state["messages"])
         
         # Call the metrics analysis tool
@@ -591,17 +678,20 @@ def metrics_agent_node(state: AgentState) -> AgentState:
         result = analyze_metrics_for_anomalies.invoke({"logs_json": logs_json})
         
         # Add findings to conversation
+        anomaly_count = len([a for a in result.get('anomalies', []) if a.get('type') == 'latency_spike'])
+        max_latency = result.get('max_latency', 0)
+        
         metrics_findings = AIMessage(content=f"""
 METRICS AGENT ANALYSIS COMPLETE:
 
 {json.dumps(result, indent=2)}
 
 Critical Findings:
-- Latency Anomalies: {len([a for a in result.get('anomalies', []) if a['type'] == 'latency_spike'])}
-- Max Latency: {result.get('max_latency', 'N/A')}ms
+- Latency Anomalies: {anomaly_count}
+- Max Latency: {max_latency}ms
 - Error Rate: {result.get('error_rate', 'N/A')}%
 
-{"⚠️ CRITICAL: Latency spikes > 2000ms detected!" if result.get('max_latency', 0) > 2000 else ""}
+{"⚠️ CRITICAL: Latency spikes > 2000ms detected!" if max_latency > 2000 else ""}
 """)
         
         messages.append(metrics_findings)
@@ -623,7 +713,7 @@ def deploy_intelligence_node(state: AgentState) -> AgentState:
     Critical for identifying deployment-related root causes.
     """
     
-    with tracer.start_as_current_span("deploy_intelligence"):
+    with TracerContextManager("deploy_intelligence"):
         messages = list(state["messages"])
         
         # Check deployment timeline
@@ -658,7 +748,7 @@ def report_generator_node(state: AgentState) -> AgentState:
     Includes root cause analysis, timeline, evidence, and remediation recommendations.
     """
     
-    with tracer.start_as_current_span("report_generator"):
+    with TracerContextManager("report_generator"):
         messages = list(state["messages"])
         
         # Generate comprehensive report
@@ -763,7 +853,7 @@ def create_incident_commander_graph():
 # MAIN EXECUTION
 # =============================================================================
 
-def run_incident_investigation(incident_alert: dict):
+def run_incident_investigation(incident_alert: dict) -> dict:
     """
     Main entry point for incident investigation.
     
@@ -771,11 +861,11 @@ def run_incident_investigation(incident_alert: dict):
         incident_alert: CloudWatch log alert JSON
         
     Returns:
-        Complete investigation report
+        Complete investigation result including report
     """
     
     # Initialize state
-    initial_state = {
+    initial_state: AgentState = {
         "messages": [],
         "incident_alert": incident_alert,
         "investigation_plan": "",
@@ -792,70 +882,80 @@ def run_incident_investigation(incident_alert: dict):
     # Create and run graph
     graph = create_incident_commander_graph()
     
-    print("=" * 80)
-    print("🚨 AUTONOMOUS INCIDENT COMMANDER ACTIVATED")
-    print("=" * 80)
+    logger.info("=" * 80)
+    logger.info("🚨 AUTONOMOUS INCIDENT COMMANDER ACTIVATED")
+    logger.info("=" * 80)
     
     # Execute investigation
     final_state = graph.invoke(initial_state)
     
-    print("\n" + "=" * 80)
-    print("📊 INVESTIGATION COMPLETE")
-    print("=" * 80)
-    print(final_state["final_report"])
+    logger.info("=" * 80)
+    logger.info("📊 INVESTIGATION COMPLETE")
+    logger.info("=" * 80)
     
-    return final_state
+    return {
+        "incident_id": f"INC-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "status": "completed",
+        "root_cause": final_state.get("root_cause", ""),
+        "recommendations": final_state.get("recommendations", []),
+        "final_report": final_state.get("final_report", ""),
+        "log_analysis": final_state.get("log_analysis", {}),
+        "metrics_analysis": final_state.get("metrics_analysis", {}),
+        "deploy_timeline": final_state.get("deploy_timeline", {}),
+        "investigation_plan": final_state.get("investigation_plan", ""),
+    }
 
 
 # =============================================================================
-# EXAMPLE USAGE
+# SAMPLE DATA
 # =============================================================================
+
+SAMPLE_ALERT = {
+    "messageType": "DATA_MESSAGE",
+    "owner": "123456789012",
+    "logGroup": "/aws/service/checkout-service",
+    "logStream": "2024/02/06/[$LATEST]checkout-prod",
+    "subscriptionFilters": ["LatencyAlerts"],
+    "logEvents": [
+        {
+            "id": "evt0001",
+            "timestamp": 1707220800000,
+            "message": "INFO request_id=req-001 endpoint=/checkout stage=start user=user-123"
+        },
+        {
+            "id": "evt0002",
+            "timestamp": 1707220801000,
+            "message": "INFO request_id=req-001 endpoint=/checkout stage=db_connect latency_ms=50"
+        },
+        {
+            "id": "evt0003",
+            "timestamp": 1707220803000,
+            "message": "ERROR request_id=req-001 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2100"
+        },
+        {
+            "id": "evt0004",
+            "timestamp": 1707220804000,
+            "message": "FATAL request_id=req-001 endpoint=/checkout status=500 total_latency_ms=2300"
+        },
+        {
+            "id": "evt0005",
+            "timestamp": 1707220810000,
+            "message": "ERROR request_id=req-002 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2050"
+        },
+        {
+            "id": "evt0006",
+            "timestamp": 1707220815000,
+            "message": "ERROR request_id=req-003 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2200"
+        }
+    ]
+}
+
 
 if __name__ == "__main__":
+    # Run investigation with sample alert
+    result = run_incident_investigation(SAMPLE_ALERT)
     
-    # Sample incident alert (Latent Configuration Bug scenario)
-    sample_alert = {
-        "messageType": "DATA_MESSAGE",
-        "owner": "123456789012",
-        "logGroup": "/aws/service/checkout-service",
-        "logStream": "2024/02/06/[$LATEST]checkout-prod",
-        "subscriptionFilters": ["LatencyAlerts"],
-        "logEvents": [
-            {
-                "id": "evt0001",
-                "timestamp": 1707220800000,
-                "message": "INFO request_id=req-001 endpoint=/checkout stage=start user=user-123"
-            },
-            {
-                "id": "evt0002",
-                "timestamp": 1707220801000,
-                "message": "INFO request_id=req-001 endpoint=/checkout stage=db_connect latency_ms=50"
-            },
-            {
-                "id": "evt0003",
-                "timestamp": 1707220803000,
-                "message": "ERROR request_id=req-001 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2100"
-            },
-            {
-                "id": "evt0004",
-                "timestamp": 1707220804000,
-                "message": "FATAL request_id=req-001 endpoint=/checkout status=500 total_latency_ms=2300"
-            },
-            {
-                "id": "evt0005",
-                "timestamp": 1707220810000,
-                "message": "ERROR request_id=req-002 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2050"
-            },
-            {
-                "id": "evt0006",
-                "timestamp": 1707220815000,
-                "message": "ERROR request_id=req-003 endpoint=/checkout stage=db_query TimeoutError: Connection pool exhausted latency_ms=2200"
-            }
-        ]
-    }
-    
-    # Run investigation
-    result = run_incident_investigation(sample_alert)
+    print("\n" + result["final_report"])
     
     # Save report to file
     with open("incident_report.md", "w") as f:
