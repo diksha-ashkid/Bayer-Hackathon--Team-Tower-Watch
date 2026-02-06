@@ -1,0 +1,1 @@
+"""Code Review Automation Application."""
