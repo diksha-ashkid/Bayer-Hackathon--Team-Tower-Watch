@@ -19,3 +19,23 @@ mypy>=1.8.0
 
 # Linting
 ruff>=0.1.0
+
+# =============================================================================
+# Incident Commander Dependencies
+# =============================================================================
+
+# AWS SDK for Bedrock integration
+boto3>=1.34.0
+botocore>=1.34.0
+
+# LangGraph for multi-agent orchestration
+langgraph>=0.2.0
+langchain-core>=0.2.0
+
+# Redis for state management and memory
+redis>=5.0.0
+
+# OpenTelemetry for observability
+opentelemetry-api>=1.24.0
+opentelemetry-sdk>=1.24.0
+opentelemetry-exporter-otlp>=1.24.0
